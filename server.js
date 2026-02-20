@@ -8,7 +8,6 @@ const mongoose = require("mongoose");
 const app = express();
 
 app.use(cors());
-// trust proxy 설정을 해야 Railway 같은 클라우드 환경에서 실제 사용자 IP를 가져올 수 있습니다.
 app.set("trust proxy", true);
 app.use(express.json());
 
@@ -20,7 +19,7 @@ mongoose
 const statSchema = new mongoose.Schema({
   name: { type: String, default: "portfolio" },
   likes: { type: Number, default: 0 },
-  likedIPs: { type: [String], default: [] }, // ✨ 좋아요 누른 IP 목록 추가
+  likedIPs: { type: [String], default: [] },
 });
 const Stat = mongoose.model("Stat", statSchema);
 
@@ -79,9 +78,12 @@ function buildProfanityMessage(found) {
   return `🙅‍♀️ ${foundText} 🙊 That's a no-no`;
 }
 
-// ✨ 클라이언트 IP를 가져오는 유틸리티 함수
 const getClientIp = (req) => {
-  return req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+  const xForwardedFor = req.headers["x-forwarded-for"];
+  if (xForwardedFor) {
+    return xForwardedFor.split(",")[0].trim();
+  }
+  return req.socket.remoteAddress;
 };
 
 app.get("/api/data", async (req, res) => {
@@ -90,12 +92,11 @@ app.get("/api/data", async (req, res) => {
     const comments = await Comment.find().sort({ createdAt: -1 });
     const clientIp = getClientIp(req);
 
-    // ✨ 현재 접속한 IP가 likedIPs 목록에 있는지 확인
     const userHasLiked = stat ? stat.likedIPs.includes(clientIp) : false;
 
     res.json({
       likes: stat ? stat.likes : 0,
-      userHasLiked, // ✨ 프론트엔드로 전달
+      userHasLiked,
       comments: comments.map((c) => ({
         id: c._id,
         text: c.text,
@@ -123,31 +124,29 @@ app.post("/api/like", async (req, res) => {
     const hasLiked = stat.likedIPs.includes(clientIp);
 
     if (hasLiked) {
-      // 이미 좋아요를 눌렀다면: IP 제거 및 좋아요 수 감소
       stat = await Stat.findOneAndUpdate(
         { name: "portfolio" },
         {
           $inc: { likes: -1 },
           $pull: { likedIPs: clientIp },
         },
-        { returnDocument: "after" },
+        { new: true },
       );
     } else {
-      // 좋아요를 누르지 않았다면: IP 추가 및 좋아요 수 증가
       stat = await Stat.findOneAndUpdate(
         { name: "portfolio" },
         {
           $inc: { likes: 1 },
           $addToSet: { likedIPs: clientIp },
         },
-        { returnDocument: "after" },
+        { new: true },
       );
     }
 
     res.json({
       success: true,
       likes: stat.likes,
-      userHasLiked: !hasLiked, // ✨ 변경된 좋아요 상태 반환
+      userHasLiked: !hasLiked,
     });
   } catch (err) {
     console.error("좋아요 업데이트 에러:", err);
