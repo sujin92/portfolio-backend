@@ -29,8 +29,12 @@ const commentSchema = new mongoose.Schema({
 const Comment = mongoose.model("Comment", commentSchema);
 
 async function initDB() {
-  const stat = await Stat.findOne({ name: "portfolio" });
-  if (!stat) await new Stat({ name: "portfolio", likes: 0 }).save();
+  try {
+    const stat = await Stat.findOne({ name: "portfolio" });
+    if (!stat) await new Stat({ name: "portfolio", likes: 0 }).save();
+  } catch (err) {
+    console.error("DB 초기화 에러:", err);
+  }
 }
 initDB();
 
@@ -94,11 +98,15 @@ app.post("/api/like", async (req, res) => {
     const stat = await Stat.findOneAndUpdate(
       { name: "portfolio" },
       { $inc: { likes: 1 } },
-      { new: true },
+      {
+        returnDocument: "after",
+        upsert: true,
+      },
     );
     res.json({ success: true, likes: stat.likes });
   } catch (err) {
-    res.status(500).json({ success: false });
+    console.error("좋아요 업데이트 에러:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
